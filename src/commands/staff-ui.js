@@ -9,7 +9,7 @@ module.exports = {
     const isAdmin = interaction.member.permissions.has('Administrator');
     const isStaff = staffRoleId && interaction.member.roles.cache.has(staffRoleId);
     if (!isAdmin && !isStaff) {
-      return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+      return interaction.reply({ content: 'You do not have permission to use this command.', flags: 64 });
     }
 
     // current configured roles (human readable)
@@ -57,6 +57,6 @@ module.exports = {
       new ActionRowBuilder().addComponents(catSelect),
     ];
 
-    await interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+    await interaction.reply({ embeds: [embed], components: rows, flags: 64 });
   }
 };
