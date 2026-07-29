@@ -17,6 +17,25 @@ async function _fetch(path) {
   return res.json();
 }
 
+async function getTeamInfo(teamInput) {
+  let teamId = (teamInput || '').trim();
+  try {
+    if (teamId.startsWith('http')) {
+      const u = new URL(teamId);
+      const parts = u.pathname.split('/').filter(Boolean);
+      teamId = parts[parts.length - 1];
+    }
+  } catch (e) { /* ignore */ }
+  try {
+    const data = await _fetch(`/teams/${teamId}`);
+    return data; // team object
+  } catch (e) {
+    if (e && e.status === 404) return null;
+    console.warn('faceit.getTeamInfo error for', teamId, e?.message || e);
+    return null;
+  }
+}
+
 async function getMatch(matchId) {
   return _fetch(`/matches/${matchId}`);
 }
@@ -69,4 +88,4 @@ async function getTeamMatches(teamInput) {
   }
 }
 
-module.exports = { getMatch, getMatchStats, getTeamMatches };
+module.exports = { getTeamInfo, getMatch, getMatchStats, getTeamMatches };
