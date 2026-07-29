@@ -55,9 +55,17 @@ module.exports = {
     const catOptions = categories.slice(0, 25);
     const catSelect = new StringSelectMenuBuilder().setCustomId('select_role_category').setPlaceholder(`Matchday Category: ${catName}`).addOptions(catOptions);
 
+    // Combine schedule buttons and actions into a single action row to respect the 5-row limit
+    const controlRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('schedule_faceit_match').setLabel('Schedule').setStyle(ButtonStyle.Primary).setEmoji('🗓️'),
+      new ButtonBuilder().setCustomId('add_faceit_team').setLabel('Add Team').setStyle(ButtonStyle.Primary).setEmoji('🧾'),
+      new ButtonBuilder().setCustomId('browse_matches').setLabel('Matches').setStyle(ButtonStyle.Secondary).setEmoji('📅'),
+      new ButtonBuilder().setCustomId('ping_unresponsive').setLabel('Ping').setStyle(ButtonStyle.Secondary).setEmoji('📣'),
+      new ButtonBuilder().setCustomId('cancel_match').setLabel('Cancel').setStyle(ButtonStyle.Danger).setEmoji('❌')
+    );
+
     const rows = [
-      scheduleRow,
-      actionsRow,
+      controlRow,
       new ActionRowBuilder().addComponents(mainSelect),
       new ActionRowBuilder().addComponents(benchSelect),
       new ActionRowBuilder().addComponents(staffSelect),
