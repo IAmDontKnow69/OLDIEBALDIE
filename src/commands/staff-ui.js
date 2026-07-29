@@ -18,32 +18,26 @@ module.exports = {
     const staffName = config.ROLE_STAFF ? (interaction.guild.roles.cache.get(config.ROLE_STAFF)?.name || config.ROLE_STAFF) : '_not set_';
     const catName = config.CATEGORY_MATCHDAY_ID ? (interaction.guild.channels.cache.get(config.CATEGORY_MATCHDAY_ID)?.name || config.CATEGORY_MATCHDAY_ID) : '_not set_';
 
+    const desc = `Use this panel to manage fixtures, schedule matches, and configure server roles.\n\nRoles status:\n• Main Team Role: ${mainName}\n• Subs Bench Role: ${benchName}\n• Staff Role: ${staffName}\n• Matchday Category: ${catName}\n\nAdd a FACEIT team to import upcoming fixtures automatically. Fixtures will be auto-posted 7 days before the match, or staff can post them manually.`;
+
     const embed = new EmbedBuilder()
       .setTitle('OLDIEBALDIE Staff Control Panel')
-      .setDescription('Use this panel to manage fixtures, schedule matches, and configure server roles. Add a FACEIT team to import upcoming fixtures automatically. Fixtures will be auto-posted 7 days before the match, or staff can post them manually.')
-      .setColor(0x00AE86)
-      .addFields(
-        { name: 'Main Team Role', value: `${mainName}`, inline: true },
-        { name: 'Subs Bench Role', value: `${benchName}`, inline: true },
-        { name: 'Staff Role', value: `${staffName}`, inline: true },
-        { name: 'Matchday Category', value: `${catName}`, inline: true },
-      );
+      .setDescription(desc)
+      .setColor(0x00AE86);
 
     const logo = process.env.TEAM_LOGO_URL;
     if (logo) embed.setThumbnail(logo);
 
-    const scheduleRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('schedule_faceit_match').setLabel('Schedule FACEIT Match').setStyle(ButtonStyle.Primary).setEmoji('🗓️'),
-      new ButtonBuilder().setCustomId('add_faceit_team').setLabel('Add FACEIT Team').setStyle(ButtonStyle.Primary).setEmoji('🧾'),
-      new ButtonBuilder().setCustomId('browse_matches').setLabel('Matches/Fixtures').setStyle(ButtonStyle.Secondary).setEmoji('📅')
+    // combine control buttons into one row (max components per message constraints)
+    const controlRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('schedule_faceit_match').setLabel('Schedule').setStyle(ButtonStyle.Primary).setEmoji('🗓️'),
+      new ButtonBuilder().setCustomId('add_faceit_team').setLabel('Add Team').setStyle(ButtonStyle.Primary).setEmoji('🧾'),
+      new ButtonBuilder().setCustomId('browse_matches').setLabel('Matches').setStyle(ButtonStyle.Secondary).setEmoji('📅'),
+      new ButtonBuilder().setCustomId('ping_unresponsive').setLabel('Ping').setStyle(ButtonStyle.Secondary).setEmoji('📣'),
+      new ButtonBuilder().setCustomId('cancel_match').setLabel('Cancel').setStyle(ButtonStyle.Danger).setEmoji('❌')
     );
 
-    const actionsRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('ping_unresponsive').setLabel('Ping Unresponsive (Channel)').setStyle(ButtonStyle.Secondary).setEmoji('📣'),
-      new ButtonBuilder().setCustomId('cancel_match').setLabel('Cancel Match').setStyle(ButtonStyle.Danger).setEmoji('❌')
-    );
-
-    // role select menus (show in the same UI so user can pick multiple while staying in the panel)
+    // role select menus (kept under a "Roles" section — still shown in the same panel so user can pick multiple)
     const roles = interaction.guild.roles.cache.filter(r => r.id !== interaction.guild.id).map(r => ({ label: r.name.substring(0, 100), value: r.id }));
     const roleOptions = roles.slice(0, 25); // Discord limit
     const mainSelect = new StringSelectMenuBuilder().setCustomId('select_role_main').setPlaceholder(`Main Team Role: ${mainName}`).addOptions(roleOptions);
@@ -54,15 +48,6 @@ module.exports = {
     const categories = interaction.guild.channels.cache.filter(c => c.type === 4).map(c => ({ label: c.name.substring(0, 100), value: c.id }));
     const catOptions = categories.slice(0, 25);
     const catSelect = new StringSelectMenuBuilder().setCustomId('select_role_category').setPlaceholder(`Matchday Category: ${catName}`).addOptions(catOptions);
-
-    // Combine schedule buttons and actions into a single action row to respect the 5-row limit
-    const controlRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('schedule_faceit_match').setLabel('Schedule').setStyle(ButtonStyle.Primary).setEmoji('🗓️'),
-      new ButtonBuilder().setCustomId('add_faceit_team').setLabel('Add Team').setStyle(ButtonStyle.Primary).setEmoji('🧾'),
-      new ButtonBuilder().setCustomId('browse_matches').setLabel('Matches').setStyle(ButtonStyle.Secondary).setEmoji('📅'),
-      new ButtonBuilder().setCustomId('ping_unresponsive').setLabel('Ping').setStyle(ButtonStyle.Secondary).setEmoji('📣'),
-      new ButtonBuilder().setCustomId('cancel_match').setLabel('Cancel').setStyle(ButtonStyle.Danger).setEmoji('❌')
-    );
 
     const rows = [
       controlRow,

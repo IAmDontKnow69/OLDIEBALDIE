@@ -1,19 +1,18 @@
 require('dotenv').config();
 const FACEIT_KEY = process.env.FACEIT_API_KEY;
+const { URL } = require('url');
 
 async function _fetch(path) {
   if (!FACEIT_KEY) throw new Error('FACEIT_API_KEY not set');
   const url = `https://open.faceit.com/data/v4${path}`;
-  // prefer global fetch (Node 18+). If not available, dynamically import node-fetch
-  let fetchFn = globalThis.fetch;
-  if (!fetchFn) {
-    const nf = await import('node-fetch');
-    fetchFn = nf.default || nf;
-  }
-  const res = await fetchFn(url, { headers: { 'Authorization': `Bearer ${FACEIT_KEY}` } });
+  const { fetch } = require('undici');
+  const res = await fetch(url, { headers: { 'Authorization': `Bearer ${FACEIT_KEY}` } });
   if (!res.ok) {
     const txt = await res.text();
-    throw new Error(`FACEIT ${res.status}: ${txt}`);
+    const err = new Error(`FACEIT ${res.status}: ${txt}`);
+    err.status = res.status;
+    err.body = txt;
+    throw err;
   }
   return res.json();
 }
@@ -26,17 +25,47 @@ async function getMatchStats(matchId) {
   return _fetch(`/matches/${matchId}/stats`);
 }
 
-async function getTeamMatches(teamId) {
+// Fetch upcoming matches for a team. Best-effort: try matches endpoint then history, but never throw to caller — return empty array on not found.
+async function getTeamMatches(teamInput) {
+  // normalize input: allow full URLs or ids
+  let teamId = (teamInput || '').trim();
   try {
-    const data = await _fetch(`/teams/${teamId}/matches`);
-    const items = data.items || data;
-    const matches = (items || []).map(m => ({ match_id: m.match_id || m.id || (m.match && m.match.match_id), scheduled_at: m.scheduled_at || (m.match && m.match.scheduled_at) || m.date || m.estimated_start_date, status: m.status || 'UNKNOWN', opponent: (m.teams && (m.teams.faction2?.name || m.teams.faction1?.name)) || m.opponent || (m.factions && (m.factions.faction2?.name || m.factions.faction1?.name)) || 'Unknown' }));
-    return matches.filter(x => x.match_id);
-  } catch (e) {
-    const data = await _fetch(`/teams/${teamId}/history?game=csgo&offset=0&limit=50`);
-    const items = data.items || [];
-    const matches = items.map(m => ({ match_id: m.match_id || m.id, scheduled_at: m.scheduled_at || m.date, status: m.status || 'UNKNOWN', opponent: m.opponent || 'Unknown' }));
-    return matches.filter(x => x.match_id);
+    // if it's a URL, extract last path segment
+    if (teamId.startsWith('http')) {
+      try {
+        const u = new URL(teamId);
+        const parts = u.pathname.split('/').filter(Boolean);
+        teamId = parts[parts.length - 1];
+      } catch (e) { /* ignore */ }
+    }
+
+    // try matches endpoint first
+    try {
+      const data = await _fetch(`/teams/${teamId}/matches`);
+      const items = data.items || data;
+      const matches = (items || []).map(m => ({ match_id: m.match_id || m.id || (m.match && m.match.match_id), scheduled_at: m.scheduled_at || (m.match && m.match.scheduled_at) || m.date || m.estimated_start_date, status: m.status || 'UNKNOWN', opponent: (m.teams && (m.teams.faction2?.name || m.teams.faction1?.name)) || m.opponent || (m.factions && (m.factions.faction2?.name || m.factions.faction1?.name)) || 'Unknown' }));
+      return matches.filter(x => x.match_id);
+    } catch (e) {
+      // if 404, try history endpoint as a fallback
+      if (e && e.status === 404) {
+        try {
+          const data = await _fetch(`/teams/${teamId}/history?game=csgo&offset=0&limit=50`);
+          const items = data.items || [];
+          const matches = items.map(m => ({ match_id: m.match_id || m.id, scheduled_at: m.scheduled_at || m.date, status: m.status || 'UNKNOWN', opponent: m.opponent || 'Unknown' }));
+          return matches.filter(x => x.match_id);
+        } catch (err2) {
+          // log and return empty
+          console.warn('faceit.getTeamMatches: team not found or no matches (history fallback):', teamId, err2?.message || err2);
+          return [];
+        }
+      }
+      // other errors — log and return empty
+      console.warn('faceit.getTeamMatches: matches endpoint failed for', teamId, e?.message || e);
+      return [];
+    }
+  } catch (err) {
+    console.error('faceit.getTeamMatches unexpected error for', teamInput, err?.message || err);
+    return [];
   }
 }
 
