@@ -14,8 +14,9 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setTitle('OLDIEBALDIE Staff Control Panel')
-      .setDescription('Match Scheduling & Server Admin Controls')
-      .setColor(0x00AE86);
+      .setDescription('Use this panel to manage fixtures, schedule matches, and configure server roles. Add a FACEIT team to import upcoming fixtures automatically. Fixtures will be auto-posted 7 days before the match, or staff can post them manually.')
+      .setColor(0x00AE86)
+      .setThumbnail(process.env.TEAM_LOGO_URL || '');
 
     const scheduleRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('schedule_faceit_match').setLabel('Schedule FACEIT Match').setStyle(ButtonStyle.Primary).setEmoji('🗓️'),

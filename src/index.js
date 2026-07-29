@@ -7,6 +7,7 @@ const storage = require('./config/storage');
 const { deployGuildCommands } = require('./utils/commandDeployer');
 const matchManager = require('./services/matchManager');
 const scheduler = require('./services/scheduler');
+const faceit = require('./services/faceit');
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
@@ -76,12 +77,33 @@ client.on('interactionCreate', async (interaction) => {
 
     // Handle timezone select menu
     if (interaction.isStringSelectMenu()) {
+      // role/category selects and timezone select handling
       if (interaction.customId === 'select_timezone') {
         const tz = interaction.values[0];
         await storage.set(`tz_${interaction.user.id}`, tz);
         await interaction.update({ content: `Timezone saved: ${tz}`, components: [], ephemeral: true });
         return;
       }
+
+      if (interaction.customId.startsWith('select_role_')) {
+        const which = interaction.customId.replace('select_role_', ''); // main, bench, staff
+        const val = interaction.values[0];
+        const cfg = (await storage.get('server_config')) || {};
+        if (which === 'category') {
+          cfg.CATEGORY_MATCHDAY_ID = val;
+        } else if (which === 'main') {
+          cfg.ROLE_MAIN_TEAM = val;
+        } else if (which === 'bench') {
+          cfg.ROLE_SUBS_BENCH = val;
+        } else if (which === 'staff') {
+          cfg.ROLE_STAFF = val;
+        }
+        await storage.set('server_config', cfg);
+        client.serverConfig = cfg;
+        await interaction.update({ content: 'Server configuration updated.', components: [], ephemeral: true });
+        return;
+      }
+
     }
 
     // Button handlers from /staff-ui
@@ -97,6 +119,77 @@ client.on('interactionCreate', async (interaction) => {
         return interaction.reply({ content: 'You do not have permission to use this control.', ephemeral: true });
       }
 
+      // Add FACEIT Team -> show modal
+      if (id === 'add_faceit_team') {
+        const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+        const modal = new ModalBuilder().setCustomId('modal_add_faceit_team').setTitle('Import FACEIT Team Fixtures');
+        const teamInput = new TextInputBuilder().setCustomId('faceit_team_id').setLabel('FACEIT Team ID or URL').setStyle(TextInputStyle.Short).setRequired(true);
+        modal.addComponents(new ActionRowBuilder().addComponents(teamInput));
+        await interaction.showModal(modal);
+        return;
+      }
+
+      // Show Fixtures
+      if (id === 'show_fixtures') {
+        await interaction.deferReply({ ephemeral: true });
+        const fixtures = (await storage.get('fixtures')) || {};
+        const guildFixtures = Object.values(fixtures).filter(f => !interaction.guild || f.guildId === interaction.guild.id);
+        if (guildFixtures.length === 0) {
+          await interaction.editReply({ content: 'No fixtures found.', ephemeral: true });
+          return;
+        }
+        const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+        const embed = new EmbedBuilder().setTitle('Upcoming Fixtures').setDescription('Showing up to 10 upcoming fixtures').setColor(0x00AE86);
+        guildFixtures.slice(0, 10).forEach(f => {
+          embed.addFields({ name: `${f.match_id} — ${f.opponent || 'Unknown'}`, value: `Date: ${f.scheduled_at || 'Unknown'}\nPosted: ${f.posted ? 'Yes' : 'No'}` });
+        });
+        const components = [];
+        // limit buttons to first 5 fixtures to stay within component limits
+        for (const f of guildFixtures.slice(0, 5)) {
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`post_fixture:${f.match_id}`).setLabel('Post Now').setStyle(ButtonStyle.Primary).setEmoji('📣'),
+            new ButtonBuilder().setCustomId(`delete_fixture:${f.match_id}`).setLabel('Delete').setStyle(ButtonStyle.Danger).setEmoji('🗑️')
+          );
+          components.push(row);
+        }
+        await interaction.editReply({ embeds: [embed], components, ephemeral: true });
+        return;
+      }
+
+      // Post fixture button
+      if (id.startsWith('post_fixture:')) {
+        await interaction.deferReply({ ephemeral: true });
+        const matchId = id.split(':').slice(1).join(':');
+        const fixtures = (await storage.get('fixtures')) || {};
+        const fx = fixtures[matchId];
+        if (!fx) {
+          await interaction.editReply({ content: 'Fixture not found', ephemeral: true });
+          return;
+        }
+        try {
+          const ch = fx.preferredChannel ? await client.channels.fetch(fx.preferredChannel) : (fx.channelId ? await client.channels.fetch(fx.channelId) : interaction.channel);
+          const guild = fx.guildId ? await client.guilds.fetch(fx.guildId) : interaction.guild;
+          await matchManager.scheduleMatch({ matchInput: matchId, notes: fx.notes || '', requester: interaction.user, channel: ch, guild });
+          fx.posted = true;
+          await storage.set('fixtures', fixtures);
+          await interaction.editReply({ content: 'Fixture posted successfully', ephemeral: true });
+        } catch (e) {
+          console.error('post fixture error', e);
+          await interaction.editReply({ content: `Failed to post fixture: ${e.message}`, ephemeral: true });
+        }
+        return;
+      }
+
+      // Delete fixture
+      if (id.startsWith('delete_fixture:')) {
+        const matchId = id.split(':').slice(1).join(':');
+        const fixtures = (await storage.get('fixtures')) || {};
+        if (fixtures[matchId]) delete fixtures[matchId];
+        await storage.set('fixtures', fixtures);
+        await interaction.reply({ content: 'Deleted fixture', ephemeral: true });
+        return;
+      }
+
       if (id === 'schedule_faceit_match') {
         // Open modal (must respond within 3s)
         const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
@@ -108,15 +201,18 @@ client.on('interactionCreate', async (interaction) => {
         return;
       }
 
-      if (id === 'configure_roles') {
-        const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
-        const modal = new ModalBuilder().setCustomId('modal_configure_roles').setTitle('Configure Server Roles / Category');
-        const mainRole = new TextInputBuilder().setCustomId('role_main').setLabel('Main Team Role ID').setStyle(TextInputStyle.Short).setRequired(false);
-        const benchRole = new TextInputBuilder().setCustomId('role_bench').setLabel('Subs Bench Role ID').setStyle(TextInputStyle.Short).setRequired(false);
-        const staffRole = new TextInputBuilder().setCustomId('role_staff').setLabel('Staff Role ID').setStyle(TextInputStyle.Short).setRequired(false);
-        const categoryId = new TextInputBuilder().setCustomId('category_matchday').setLabel('Matchday Category ID').setStyle(TextInputStyle.Short).setRequired(false);
-        modal.addComponents(new ActionRowBuilder().addComponents(mainRole), new ActionRowBuilder().addComponents(benchRole), new ActionRowBuilder().addComponents(staffRole), new ActionRowBuilder().addComponents(categoryId));
-        await interaction.showModal(modal);
+      if (id === 'list_matches') {
+        await interaction.deferReply({ ephemeral: true });
+        const matches = (await storage.get('matches')) || {};
+        const items = Object.values(matches).slice(0, 20);
+        if (items.length === 0) {
+          await interaction.editReply({ content: 'No posted matches found.', ephemeral: true });
+          return;
+        }
+        const { EmbedBuilder } = require('discord.js');
+        const embed = new EmbedBuilder().setTitle('Posted Matches').setColor(0x00AE86);
+        items.forEach(m => embed.addFields({ name: `${m.match_id} — ${m.opponent || 'Unknown'}`, value: `Date: ${m.scheduled_at || 'Unknown'}\nStatus: ${m.status || 'Unknown'}` }));
+        await interaction.editReply({ embeds: [embed], ephemeral: true });
         return;
       }
 
@@ -131,6 +227,28 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.deferReply({ ephemeral: true });
         const result = await matchManager.cancelMatchFromChannel(interaction.channelId);
         await interaction.editReply({ content: result, ephemeral: true });
+        return;
+      }
+
+      if (id === 'configure_roles') {
+        // present role select menus + category select
+        const { ActionRowBuilder, StringSelectMenuBuilder, ChannelType } = require('discord.js');
+        const roles = interaction.guild.roles.cache.filter(r => r.id !== interaction.guild.id).map(r => ({ label: r.name.substring(0, 100), value: r.id }));
+        const roleChunks = roles.slice(0, 25); // Discord limit
+        const mainSelect = new StringSelectMenuBuilder().setCustomId('select_role_main').setPlaceholder('Select Main Team Role').addOptions(roleChunks);
+        const benchSelect = new StringSelectMenuBuilder().setCustomId('select_role_bench').setPlaceholder('Select Subs Bench Role').addOptions(roleChunks);
+        const staffSelect = new StringSelectMenuBuilder().setCustomId('select_role_staff').setPlaceholder('Select Staff Role').addOptions(roleChunks);
+        // categories
+        const categories = interaction.guild.channels.cache.filter(c => c.type === ChannelType.GuildCategory).map(c => ({ label: c.name.substring(0, 100), value: c.id }));
+        const catOptions = categories.slice(0, 25);
+        const catSelect = new StringSelectMenuBuilder().setCustomId('select_role_category').setPlaceholder('Select Matchday Category').addOptions(catOptions);
+        const rows = [
+          new ActionRowBuilder().addComponents(mainSelect),
+          new ActionRowBuilder().addComponents(benchSelect),
+          new ActionRowBuilder().addComponents(staffSelect),
+          new ActionRowBuilder().addComponents(catSelect),
+        ];
+        await interaction.reply({ content: 'Select roles and category to configure (select one per menu).', components: rows, ephemeral: true });
         return;
       }
     }
@@ -165,6 +283,44 @@ client.on('interactionCreate', async (interaction) => {
         // update cached copy
         client.serverConfig = cfg;
         await interaction.reply({ content: 'Server configuration saved.', ephemeral: true });
+        return;
+      }
+
+      if (interaction.customId === 'modal_add_faceit_team') {
+        await interaction.deferReply({ ephemeral: true });
+        const teamIdRaw = interaction.fields.getTextInputValue('faceit_team_id');
+        const teamId = teamIdRaw.trim().split('/').pop();
+        try {
+          const found = await faceit.getTeamMatches(teamId);
+          if (!found || found.length === 0) {
+            await interaction.editReply({ content: 'No fixtures found for that team.', ephemeral: true });
+            return;
+          }
+          const fixtures = (await storage.get('fixtures')) || {};
+          let added = 0;
+          for (const f of found) {
+            const mid = f.match_id;
+            if (!fixtures[mid]) {
+              fixtures[mid] = {
+                match_id: mid,
+                scheduled_at: f.scheduled_at ? new Date(f.scheduled_at).toISOString() : null,
+                opponent: f.opponent || 'Unknown',
+                teamId,
+                posted: false,
+                guildId: interaction.guild ? interaction.guild.id : null,
+                channelId: interaction.channel ? interaction.channel.id : null,
+                preferredChannel: null,
+                notes: '',
+              };
+              added++;
+            }
+          }
+          await storage.set('fixtures', fixtures);
+          await interaction.editReply({ content: `Imported ${added} fixtures for team ${teamId}.`, ephemeral: true });
+        } catch (e) {
+          console.error('add faceit team error', e);
+          await interaction.editReply({ content: `Failed to import fixtures: ${e.message}`, ephemeral: true });
+        }
         return;
       }
     }
