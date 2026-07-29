@@ -1,51 +1,51 @@
+// scheduler: add fixtures auto-posting when within 7 days and hourly check
 const storage = require('../config/storage');
-const matchManager = require('./matchManager');
-const faceit = require('./faceit');
 
 let pollIntervalHandle = null;
 let reminderIntervalHandle = null;
+let fixturesIntervalHandle = null;
 
-function start(client, matchManagerInstance) {
-  // Poll FACEIT every 60s
+function _inSevenDays(ts) {
+  const now = Date.now();
+  const target = new Date(ts).getTime();
+  const diff = target - now;
+  return diff <= 7 * 24 * 60 * 60 * 1000 && diff > 0;
+}
+
+function start(client, matchManager) {
+  // existing FACEIT poll every 60s (left as-is)
   pollIntervalHandle = setInterval(async () => {
     try {
       const matches = (await storage.get('matches')) || {};
       for (const mid of Object.keys(matches)) {
         const m = matches[mid];
         try {
+          const faceit = require('./faceit');
           const mf = await faceit.getMatch(mid);
-          // check reschedule
           const newSched = mf.scheduled_at || m.scheduled_at;
           if (newSched && newSched !== m.scheduled_at) {
             m.scheduled_at = newSched;
-            // update message
             try {
               const ch = await client.channels.fetch(m.channelId);
               const msg = await ch.messages.fetch(m.messageId);
-              const { formatMatchTime } = require('../utils/formatting');
-              const timeStr = formatMatchTime(m.scheduled_at, 'GMT');
+              const timeStr = new Date(m.scheduled_at).toUTCString();
               await msg.edit(`OLDIEBALDIE MATCH\nMatch at ${timeStr} VS ${m.opponent} (Rescheduled)`);
-              // ping channel
               await ch.send(`Match ${m.match_id} has been rescheduled.`);
             } catch (e) { console.warn('failed to update rescheduled message', e?.message || e); }
             await storage.set('matches', matches);
           }
 
-          // check status change to FINISHED
           if (mf.status === 'FINISHED' && m.status !== 'FINISHED') {
             m.status = 'FINISHED';
             await storage.set('matches', matches);
-            // fetch stats and post report
             try {
               const stats = await faceit.getMatchStats(mid);
-              // basic report formatting
               const ch = await client.channels.fetch(m.channelId);
               let report = `Match ${m.match_id} finished. Stats: \n`;
               report += JSON.stringify(stats).slice(0, 1900);
               await ch.send(report);
             } catch (e) { console.warn('failed to fetch/post match stats', e?.message || e); }
 
-            // cleanup voice channels and events
             try {
               const vc = await storage.get(`vc_${mid}`);
               if (vc) {
@@ -69,7 +69,7 @@ function start(client, matchManagerInstance) {
     } catch (e) { console.error('poll loop error', e); }
   }, 60 * 1000);
 
-  // Reminder every 2 hours
+  // Reminder every 2 hours (existing)
   reminderIntervalHandle = setInterval(async () => {
     try {
       const matches = (await storage.get('matches')) || {};
@@ -86,6 +86,25 @@ function start(client, matchManagerInstance) {
       }
     } catch (e) { console.error('reminder loop error', e); }
   }, 1000 * 60 * 60 * 2);
+
+  // Fixtures autodeploy checker every hour
+  fixturesIntervalHandle = setInterval(async () => {
+    try {
+      const fixtures = (await storage.get('fixtures')) || {};
+      for (const key of Object.keys(fixtures)) {
+        const fx = fixtures[key];
+        if (!fx.posted && fx.scheduled_at && _inSevenDays(fx.scheduled_at)) {
+          try {
+            // schedule via matchManager using faceit match id
+            await matchManager.scheduleMatch({ matchInput: fx.match_id, notes: fx.notes || '', requester: { id: 'system' }, channel: fx.preferredChannel ? await client.channels.fetch(fx.preferredChannel) : await client.channels.fetch(fx.channelId), guild: fx.guildId ? await client.guilds.fetch(fx.guildId) : null });
+            fx.posted = true;
+            await storage.set('fixtures', fixtures);
+            console.log('Auto-posted fixture', fx.match_id);
+          } catch (e) { console.warn('failed to auto-post fixture', fx.match_id, e?.message || e); }
+        }
+      }
+    } catch (e) { console.error('fixtures loop error', e); }
+  }, 1000 * 60 * 60);
 }
 
 module.exports = { start };

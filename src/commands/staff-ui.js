@@ -19,6 +19,12 @@ module.exports = {
 
     const scheduleRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('schedule_faceit_match').setLabel('Schedule FACEIT Match').setStyle(ButtonStyle.Primary).setEmoji('🗓️'),
+      new ButtonBuilder().setCustomId('add_faceit_team').setLabel('Add FACEIT Team').setStyle(ButtonStyle.Primary).setEmoji('🧾'),
+      new ButtonBuilder().setCustomId('show_fixtures').setLabel('View Fixtures').setStyle(ButtonStyle.Secondary).setEmoji('📅')
+    );
+
+    const matchesRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('list_matches').setLabel('Matches').setStyle(ButtonStyle.Secondary).setEmoji('📌'),
       new ButtonBuilder().setCustomId('ping_unresponsive').setLabel('Ping Unresponsive').setStyle(ButtonStyle.Secondary).setEmoji('📣'),
       new ButtonBuilder().setCustomId('cancel_match').setLabel('Cancel Match').setStyle(ButtonStyle.Danger).setEmoji('❌')
     );
@@ -28,6 +34,6 @@ module.exports = {
     );
 
     // reply immediately (synchronous operations only) so Discord doesn't time out
-    await interaction.reply({ embeds: [embed], components: [scheduleRow, adminRow], ephemeral: true });
+    await interaction.reply({ embeds: [embed], components: [scheduleRow, matchesRow, adminRow], ephemeral: true });
   }
 };
