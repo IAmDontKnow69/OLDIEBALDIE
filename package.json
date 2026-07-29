@@ -1,0 +1,19 @@
+{
+  "name": "oldiebaldie-bot",
+  "version": "0.1.0",
+  "description": "OLDIEBALDIE Discord bot (CS2 team management)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon --watch src --exec node src/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "discord.js": "^14.13.0",
+    "node-fetch": "^3.3.1",
+    "node-persist": "^3.1.0",
+    "dotenv": "^16.0.0"
+  }
+}
