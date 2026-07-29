@@ -1,3 +1,3 @@
-Triggering redeploy: updated at 2026-07-29T18:48:00Z
+Redeploy trigger: 2026-07-29T20:58:00Z
 
-This file is used to trigger a manual redeploy via a small commit.
+Small commit to force Render to pick up latest main for deployment.
