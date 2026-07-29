@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, RoleSelectMenuBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const storage = require('../config/storage');
 
 module.exports = {
@@ -19,13 +19,13 @@ module.exports = {
       .setColor(0x00AE86);
 
     const scheduleRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('schedule_faceit_match').setLabel('Schedule FACEIT Match').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('ping_unresponsive').setLabel('Ping Unresponsive').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('cancel_match').setLabel('Cancel Match').setStyle(ButtonStyle.Danger)
+      new ButtonBuilder().setCustomId('schedule_faceit_match').setLabel('Schedule FACEIT Match').setStyle(ButtonStyle.Primary).setEmoji('🗓️'),
+      new ButtonBuilder().setCustomId('ping_unresponsive').setLabel('Ping Unresponsive').setStyle(ButtonStyle.Secondary).setEmoji('📣'),
+      new ButtonBuilder().setCustomId('cancel_match').setLabel('Cancel Match').setStyle(ButtonStyle.Danger).setEmoji('❌')
     );
 
     const adminRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('configure_roles').setLabel('Configure Roles').setStyle(ButtonStyle.Primary)
+      new ButtonBuilder().setCustomId('configure_roles').setLabel('Configure Roles').setStyle(ButtonStyle.Primary).setEmoji('⚙️')
     );
 
     await interaction.reply({ embeds: [embed], components: [scheduleRow, adminRow], ephemeral: true });
