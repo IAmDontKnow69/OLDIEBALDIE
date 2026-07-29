@@ -1,11 +1,10 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const storage = require('../config/storage');
 
 module.exports = {
   data: new SlashCommandBuilder().setName('staff-ui').setDescription('Open the staff control panel'),
   execute: async (interaction) => {
     // permission check: admin or configured staff role
-    const config = await storage.get('server_config') || {};
+    const config = interaction.client.serverConfig || {};
     const staffRoleId = config.ROLE_STAFF;
     const isAdmin = interaction.member.permissions.has('Administrator');
     const isStaff = staffRoleId && interaction.member.roles.cache.has(staffRoleId);
@@ -28,6 +27,7 @@ module.exports = {
       new ButtonBuilder().setCustomId('configure_roles').setLabel('Configure Roles').setStyle(ButtonStyle.Primary).setEmoji('⚙️')
     );
 
+    // reply immediately (synchronous operations only) so Discord doesn't time out
     await interaction.reply({ embeds: [embed], components: [scheduleRow, adminRow], ephemeral: true });
   }
 };
